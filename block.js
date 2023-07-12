@@ -65,10 +65,17 @@ exports.Block = class Block {
 };
 
 exports.Transaction = class Transaction {
-  constructor(sender, receiver, amount, fee) {
+  constructor(sender, receiver, amount, fee, signature) {
     this.sender = sender;
     this.receiver = receiver;
     this.amount = amount;
+    this.signature = signature;
     this.fee = fee;
+  }
+  calculateHash() {
+    return crypto
+      .createHash("sha256")
+      .update(this.sender + this.receiver + this.amount + this.fee)
+      .digest("hex");
   }
 };

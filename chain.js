@@ -3,6 +3,8 @@ const Block = require("./block.js").Block;
 const BlockHeader = require("./block.js").BlockHeader;
 const Transaction = require("./block.js").Transaction;
 const MerkleTree = require("./merkleTree.js");
+const EC = require("elliptic").ec,
+  ec = new EC("secp256k1");
 const { Level } = require("level");
 const fs = require("fs");
 const path = require("path");
@@ -35,6 +37,18 @@ function calculateHashForBlock(block) {
         block.blockHeader.merkleRoot +
         block.blockHeader.time +
         block.nonce
+    )
+    .digest("hex");
+}
+
+function calculateHashForTransaction(transaction) {
+  return crypto
+    .createHash("sha256")
+    .update(
+      transaction.sender +
+        transaction.receiver +
+        transaction.amount +
+        transaction.fee
     )
     .digest("hex");
 }
@@ -183,6 +197,17 @@ async function validateTransaction(transaction) {
     await updateBalance(transaction.receiver, transaction.amount);
     return true;
   }
+  const key = ec.keyFromPublic(transaction.sender, "hex");
+  const validSignature = key.verify(
+    calculateHashForTransaction(transaction),
+    transaction.signature
+  );
+  if (!validSignature) {
+    console.log(
+      `Invalid transaction from ${transaction.sender} due to invalid signature`
+    );
+    return false;
+  }
 
   try {
     let senderBalance = await getBalance(transaction.sender);
@@ -240,28 +265,24 @@ function updateBalance(user, amount) {
   });
 }
 
-async function createAndAddTransaction(
-  block,
-  sender,
-  receiver,
-  amount,
-  fee,
-  minerAddress
-) {
-  let newTransaction = new Transaction(sender, receiver, amount);
-  let minerRewardTransaction = new Transaction("system", minerAddress, fee);
+async function createAndAddTransaction(block, transaction, minerAddress) {
+  let minerRewardTransaction = new Transaction(
+    "system",
+    minerAddress,
+    transaction.fee
+  );
 
-  if (await validateTransaction(newTransaction)) {
+  if (await validateTransaction(transaction)) {
     // Deduct the fee from the sender's balance
-    let senderBalance = await getBalance(sender);
-    await updateBalance(sender, senderBalance - fee);
+    let senderBalance = await getBalance(transaction.sender);
+    await updateBalance(transaction.sender, senderBalance - transaction.fee);
 
     // Add the fee to the miner's balance
     let minerBalance = await getBalance(minerAddress);
-    await updateBalance(minerAddress, minerBalance + fee);
+    await updateBalance(minerAddress, minerBalance + transaction.fee);
 
     // Add the transactions to the block
-    block.transactions.push(newTransaction);
+    block.transactions.push(transaction);
     block.transactions.push(minerRewardTransaction);
 
     // Recalculate the Merkle root and mine the block
