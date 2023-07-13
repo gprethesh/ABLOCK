@@ -12,9 +12,9 @@ const { minerAddress, TRANSACTION_FEE } = require("./config.json");
 
 // Add your private keys here
 const privateKeySender1 =
-  "f63795f1f00944217faa57bf6965eec798e1f7a3261c7542424ca7526d3f7af200";
+  "f63795f1f00944217faa57bf6965eec798e1f7a3261c7542424ca7526d3f7af2";
 const privateKeySender2 =
-  "dd648654b24a191bd70c236d88e90b2179a4f49a0908d86510ffe50732019d4a00";
+  "dd648654b24a191bd70c236d88e90b2179a4f49a0908d86510ffe50732019d4a";
 
 function signTransaction(transaction, privateKey) {
   const key = ec.keyFromPrivate(privateKey);

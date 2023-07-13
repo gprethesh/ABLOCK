@@ -3,15 +3,20 @@ const Block = require("./block.js").Block;
 const BlockHeader = require("./block.js").BlockHeader;
 const Transaction = require("./block.js").Transaction;
 const MerkleTree = require("./merkleTree.js");
+const AsyncLock = require("async-lock");
 const EC = require("elliptic").ec,
   ec = new EC("secp256k1");
 const { Level } = require("level");
 const fs = require("fs");
 const path = require("path");
-const { TRANSACTION_FEE, MINING_REWARD } = require("./config.json");
+const levelup = require("levelup");
+const leveldown = require("leveldown");
+
+const { TRANSACTION_FEE, MINING_REWARD, MAX_SUPPLY } = require("./config.json");
 
 const difficulty = 5;
 const blockchain = [];
+const lock = new AsyncLock();
 
 let db;
 
@@ -19,7 +24,8 @@ let createDb = async (peerId) => {
   let dir = path.join(__dirname, "db", peerId);
   try {
     await fs.promises.mkdir(dir, { recursive: true });
-    db = new Level(dir);
+    let levelDb = leveldown(dir);
+    db = levelup(levelDb);
     let genesisBlock = await createGenesisBlock();
     blockchain.push(genesisBlock);
     storeBlock(genesisBlock);
@@ -86,7 +92,7 @@ async function createGenesisBlock() {
 
 async function mineBlock(block, minerAddress) {
   let hash = calculateHashForBlock(block);
-  console.log(`Mining for hash`, hash);
+  // console.log(`Mining for hash`, hash);
   while (hash.substring(0, difficulty) !== Array(difficulty + 1).join("0")) {
     block.nonce++;
     hash = calculateHashForBlock(block);
@@ -183,11 +189,11 @@ function addBlockToChain(newBlock) {
   }
 }
 
-// create a storeBlock method to store the new block
 let storeBlock = (newBlock) => {
   db.put(newBlock.index, JSON.stringify(newBlock), function (err) {
     if (err) console.error("Error storing block:", err);
-    else console.log("--- Inserting block index: " + newBlock.index);
+    else if (newBlock.index !== 0)
+      console.log("--- Inserting block index: " + newBlock.index);
   });
 };
 
@@ -266,30 +272,52 @@ function updateBalance(user, amount) {
 }
 
 async function createAndAddTransaction(block, transaction, minerAddress) {
-  let minerRewardTransaction = new Transaction(
-    "system",
-    minerAddress,
-    transaction.fee
-  );
+  try {
+    await lock.acquire("transaction", async () => {
+      try {
+        let minerRewardTransaction = new Transaction(
+          "system",
+          minerAddress,
+          transaction.fee
+        );
 
-  if (await validateTransaction(transaction)) {
-    // Deduct the fee from the sender's balance
-    let senderBalance = await getBalance(transaction.sender);
-    await updateBalance(transaction.sender, senderBalance - transaction.fee);
+        if (await validateTransaction(transaction)) {
+          // Check if the total supply after the transaction and the fee would exceed the maximum supply
+          let totalSupply = await getTotalSupply();
+          if (totalSupply + transaction.amount + transaction.fee > MAX_SUPPLY) {
+            console.log(
+              "Error: This transaction would exceed the maximum supply of tokens"
+            );
+            return;
+          }
 
-    // Add the fee to the miner's balance
-    let minerBalance = await getBalance(minerAddress);
-    await updateBalance(minerAddress, minerBalance + transaction.fee);
+          // Deduct the fee from the sender's balance
+          let senderBalance = await getBalance(transaction.sender);
+          await updateBalance(
+            transaction.sender,
+            senderBalance - transaction.fee
+          );
 
-    // Add the transactions to the block
-    block.transactions.push(transaction);
-    block.transactions.push(minerRewardTransaction);
+          // Add the fee to the miner's balance
+          let minerBalance = await getBalance(minerAddress);
+          await updateBalance(minerAddress, minerBalance + transaction.fee);
 
-    // Recalculate the Merkle root and mine the block
-    block.blockHeader.merkleRoot = new MerkleTree(
-      block.transactions
-    ).getMerkleRoot();
-    mineBlock(block, minerAddress);
+          // Add the transactions to the block
+          block.transactions.push(transaction);
+          block.transactions.push(minerRewardTransaction);
+
+          // Recalculate the Merkle root and mine the block
+          block.blockHeader.merkleRoot = new MerkleTree(
+            block.transactions
+          ).getMerkleRoot();
+          mineBlock(block, minerAddress);
+        }
+      } catch (error) {
+        console.error("Error processing transaction:", error);
+      }
+    });
+  } catch (error) {
+    console.error("Error acquiring lock:", error);
   }
 }
 
@@ -307,8 +335,32 @@ function getWalletBalance(walletAddress) {
         console.log(
           `The balance of wallet address ${walletAddress} is ${balance}.`
         );
-        resolve(balance);
+        resolve(Number(balance));
       }
+    });
+  });
+}
+
+async function getTotalSupply() {
+  let totalSupply = 0;
+
+  // Create a read stream for the database
+  let stream = db.createReadStream();
+
+  // Listen for data events, which are emitted for each entry in the database
+  stream.on("data", function (data) {
+    // The key is the address and the value is the balance
+    let balance = parseInt(data.value);
+    totalSupply += balance;
+  });
+
+  // Return a promise that resolves with the total supply when the stream ends
+  return new Promise((resolve, reject) => {
+    stream.on("end", function () {
+      resolve(totalSupply);
+    });
+    stream.on("error", function (err) {
+      reject(err);
     });
   });
 }
