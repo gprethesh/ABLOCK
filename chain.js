@@ -92,7 +92,7 @@ async function createGenesisBlock() {
 
 async function mineBlock(block, minerAddress) {
   let hash = calculateHashForBlock(block);
-  // console.log(`Mining for hash`, hash);
+  console.log(`Mining for hash`, hash);
   while (hash.substring(0, difficulty) !== Array(difficulty + 1).join("0")) {
     block.nonce++;
     hash = calculateHashForBlock(block);
@@ -197,6 +197,42 @@ let storeBlock = (newBlock) => {
   });
 };
 
+async function validateTransfer(transaction) {
+  if (transaction.sender === "genesis") {
+    console.log(`Genesis Block detected`);
+    await updateBalance(transaction.receiver, transaction.amount);
+    return true;
+  }
+  const key = ec.keyFromPublic(transaction.sender, "hex");
+  const validSignature = key.verify(
+    calculateHashForTransaction(transaction),
+    transaction.signature
+  );
+  console.log(`validSignature::`, validSignature);
+  if (!validSignature) {
+    console.log(
+      `Invalid transaction from ${transaction.sender} due to invalid signature`
+    );
+    return false;
+  }
+
+  try {
+    let senderBalance = await getBalance(transaction.sender);
+    senderBalance = senderBalance || 0;
+    if (transaction.amount + TRANSACTION_FEE > senderBalance) {
+      console.log(
+        `Invalid transaction from ${transaction.sender} due to insufficient funds`
+      );
+      return false;
+    } else {
+      return true;
+    }
+  } catch (err) {
+    console.log(`Error fetching balance: `, err);
+    return false;
+  }
+}
+
 async function validateTransaction(transaction) {
   if (transaction.sender === "genesis") {
     console.log(`Genesis Block detected`);
@@ -208,6 +244,7 @@ async function validateTransaction(transaction) {
     calculateHashForTransaction(transaction),
     transaction.signature
   );
+
   if (!validSignature) {
     console.log(
       `Invalid transaction from ${transaction.sender} due to invalid signature`
@@ -371,4 +408,5 @@ module.exports = {
   createAndAddTransaction: createAndAddTransaction,
   createDb: createDb,
   getWalletBalance: getWalletBalance,
+  validateTransfer: validateTransfer,
 };

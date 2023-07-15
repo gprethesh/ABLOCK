@@ -7,7 +7,7 @@ const addBlockToChain = require("./chain.js").addBlockToChain;
 const createNewBlock = require("./chain.js").createNewBlock;
 const createAndAddTransaction = require("./chain.js").createAndAddTransaction;
 const createDb = require("./chain.js").createDb;
-const getWalletBalance = require("./chain.js").getWalletBalance;
+
 const { minerAddress, TRANSACTION_FEE } = require("./config.json");
 
 // Add your private keys here
