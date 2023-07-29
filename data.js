@@ -284,7 +284,7 @@ const run = async () => {
                 chalk.green.bold("-----------BLOCK_SYNCED-------------")
               );
               ENABLE_CHAIN_REQUEST = true;
-              //job.start();
+              job.start();
               console.log(`ENABLE_CHAIN_REQUEST::`, ENABLE_CHAIN_REQUEST);
               console.log(chalk.yellow.bold("Block Synced Successfully"));
               console.log(
@@ -452,10 +452,10 @@ writeMessageToPeerToId = (toId, type, data) => {
   }
 };
 
-const job = new CronJob("*/20 * * * * *", async function () {
+const job = new CronJob("*/60 * * * * *", async function () {
   console.log(`CORN JOB CALLED`);
   isMining = true;
-  while (isMining) {
+  if (isMining) {
     console.log(chalk.green.bold("-----------MINE_BLOCK-------------"));
     const transaction1 = tp.getTransactionPool();
     let block1 = await createNewBlock([], minerAddress);
@@ -484,6 +484,6 @@ const job = new CronJob("*/20 * * * * *", async function () {
   }
 });
 
-job.start();
+// job.start();
 
 run();
