@@ -2,9 +2,7 @@ const createDb = require("./chain.js").createDb;
 const getWalletBalance = require("./chain.js").getWalletBalance;
 
 const bal = async () => {
-  await createDb(
-    "ef642e8079a156ff97a33307a516bae8752891da63bae4281642329af8402786"
-  );
+  await createDb("hello");
   const bal1 = await getWalletBalance(
     "04227ea4320cfd7d50fd821b3cc66d7bcbd80a8806dc3e5ce90fba3c6594920c482d6360933fd149363d5d1177320e108d836165ae48ece6d9c54919565c2f0562"
   );

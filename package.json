@@ -13,15 +13,20 @@
     "async-lock": "^1.4.0",
     "axios": "^1.4.0",
     "body-parser": "^1.20.2",
+    "chalk": "^4.1.2",
+    "cron": "^2.4.0",
     "crypto": "^1.0.1",
     "dat-swarm-defaults": "^1.0.3",
     "discovery-swarm": "^6.1.0",
     "elliptic": "^6.5.4",
     "express": "^4.18.2",
     "get-port": "^5.1.1",
+    "hypercore-crypto": "^3.3.1",
+    "hyperswarm": "^4.5.1",
     "level": "^8.0.0",
     "leveldown": "^6.1.1",
-    "levelup": "^5.1.1"
+    "levelup": "^5.1.1",
+    "noise-peer": "^2.1.1"
   },
   "devDependencies": {
     "chai": "^4.3.7"
