@@ -43,6 +43,7 @@ let MessageType = {
 let writeMessageToPeers, writeMessageToPeerToId;
 
 let ENABLE_CHAIN_REQUEST = false;
+let isMining = false;
 
 let initHttpServer = (port) => {
   let http_port = "80" + port.toString().slice(-2);
@@ -346,7 +347,13 @@ const run = async () => {
               if (message.data.sender !== keyPair.publicKey.toString("hex")) {
                 console.log("-----------RECEIVED_NEW_BLOCK-------------");
                 // add to blockchain
-                await addBlockToChain(message.data.block);
+                const newBlock = await addBlockToChain(message.data.block);
+                if (newBlock) {
+                  // Stop any ongoing mining process
+                  isMining = false;
+                  // Start mining a new block
+                  job.start();
+                }
                 console.log(`ADDING TO BLOCKCHAIN`);
                 console.log("-----------RECEIVED_NEW_BLOCK-------------");
               }
@@ -447,33 +454,36 @@ writeMessageToPeerToId = (toId, type, data) => {
 
 const job = new CronJob("*/20 * * * * *", async function () {
   console.log(`CORN JOB CALLED`);
-  console.log(chalk.green.bold("-----------MINE_BLOCK-------------"));
-  const transaction1 = tp.getTransactionPool();
-  let block1 = await createNewBlock([], minerAddress);
+  isMining = true;
+  while (isMining) {
+    console.log(chalk.green.bold("-----------MINE_BLOCK-------------"));
+    const transaction1 = tp.getTransactionPool();
+    let block1 = await createNewBlock([], minerAddress);
 
-  console.log(`blockXXX`, block1);
-  await createAndAddTransaction(block1, [], minerAddress);
-  try {
-    const info = await addBlockToChain(block1);
-    console.log(`info`, info);
+    console.log(`blockXXX`, block1);
+    await createAndAddTransaction(block1, [], minerAddress);
+    try {
+      const info = await addBlockToChain(block1);
+      console.log(`info`, info);
 
-    if (info) {
-      console.log(chalk.blue.bold("-----------BROADCAST_BLOCK-------------"));
-      writeMessageToPeers(MessageType.GET_NEW_BLOCK, {
-        block: info,
-        sender: keyPair.publicKey.toString("hex"),
-      });
-      console.log(chalk.blue.bold("-----------BROADCAST_BLOCK-------------"));
+      if (info) {
+        console.log(chalk.blue.bold("-----------BROADCAST_BLOCK-------------"));
+        writeMessageToPeers(MessageType.GET_NEW_BLOCK, {
+          block: info,
+          sender: keyPair.publicKey.toString("hex"),
+        });
+        console.log(chalk.blue.bold("-----------BROADCAST_BLOCK-------------"));
+      }
+    } catch (error) {
+      console.log("An error occurred while adding the block:", error);
     }
-  } catch (error) {
-    console.log("An error occurred while adding the block:", error);
+
+    console.log(chalk.green.bold("-----------MINE_BLOCK-------------"));
+
+    console.log(`CORN JOB OFF`);
   }
-
-  console.log(chalk.green.bold("-----------MINE_BLOCK-------------"));
-
-  console.log(`CORN JOB OFF`);
 });
 
-// job.start();
+job.start();
 
 run();

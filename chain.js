@@ -127,14 +127,13 @@ async function mineBlock(block) {
   while (hash.substring(0, difficulty) !== Array(difficulty + 1).join("0")) {
     block.nonce++;
     hash = calculateHashForBlock(block);
+    // if (block.nonce % 10000 === 0) {
+    //   console.log(`Checking hash: ${hash}`); // This line logs each 10,000th hash that is checked
+    // }
   }
 
   block.blockHeader.hash = hash;
 
-  // Reward the miner and update balances
-  // await rewardMiner(block);
-
-  // await addBlockToChain(block);
   return true;
 }
 
