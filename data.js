@@ -203,12 +203,12 @@ const run = async () => {
       }
     }
 
-    // setTimeout(() => {
-    //   if (ENABLE_CHAIN_REQUEST == false) {
-    //     writeMessageToPeers(MessageType.REQUEST_BLOCKCHAIN_HEIGHT);
-    //     console.log(`No blocks found so calling this method.`);
-    //   }
-    // }, 10000);
+    setTimeout(() => {
+      if (ENABLE_CHAIN_REQUEST == false) {
+        writeMessageToPeers(MessageType.REQUEST_BLOCKCHAIN_HEIGHT);
+        console.log(`No blocks found so calling this method.`);
+      }
+    }, 10000);
 
     secretStream.on("data", async (data) => {
       let message;
@@ -349,12 +349,25 @@ const run = async () => {
                 // add to blockchain
                 const newBlock = await addBlockToChain(message.data.block);
                 if (newBlock) {
+                  console.log(
+                    chalk.red.bold(
+                      `OPPONENT GOT REWARD - ADDING THIER BLOCK TO CHAIN`
+                    )
+                  );
                   // Stop any ongoing mining process
                   isMining = false;
                   // Start mining a new block
                   job.start();
+                  console.log(
+                    chalk.red.bold(`RESTARTING THE MINING ON THIS NODE`)
+                  );
+                } else {
+                  console.log(
+                    chalk.green.bold(
+                      `BLOCK SENT BY OPPONENT WAS INAVLID - SO I WON`
+                    )
+                  );
                 }
-                console.log(`ADDING TO BLOCKCHAIN`);
                 console.log("-----------RECEIVED_NEW_BLOCK-------------");
               }
             }
@@ -485,7 +498,5 @@ const job = new CronJob("*/60 * * * * *", async function () {
 });
 
 // job.start();
-
-// olk
 
 run();
