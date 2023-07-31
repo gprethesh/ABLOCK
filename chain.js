@@ -203,15 +203,12 @@ async function getPreviousBlockHeader() {
   // Get the total count of blocks in your blockchain
   let totalBlocks = await getBlockHeight();
 
-  console.log(`totalBlocks`, totalBlocks);
-
   let previousBlockHeader = null;
 
   if (totalBlocks > 0) {
     // if blocks exist, get the last block's hash
     previousBlockHeader = (await getBlockFromLevelDB(totalBlocks)).blockHeader
       .hash;
-    console.log(`Called if `);
   } else if (totalBlocks === 0) {
     // if no blocks exist yet (other than genesis), get the genesis block's hash
     previousBlockHeader = (await getBlockFromLevelDB(0)).blockHeader.hash;
@@ -220,13 +217,13 @@ async function getPreviousBlockHeader() {
     throw new Error("Invalid block count");
   }
 
-  console.log(`previousBlockHeader`, previousBlockHeader);
   return previousBlockHeader;
 }
 
 async function updateDifficulty() {
   const targetBlockTime = 20000;
-  const adjustmentFactor = 0.05;
+  const adjustmentFactor = 1;
+  const TARGET_BLOCK_INTERVAL = 100;
 
   // Add a default difficulty value for the first block.
   let defaultDifficulty = 5;
@@ -238,61 +235,28 @@ async function updateDifficulty() {
     return defaultDifficulty;
   }
 
-  if (blockHeight < 100 || blockHeight % 100 !== 0) {
+  if (
+    blockHeight < TARGET_BLOCK_INTERVAL ||
+    blockHeight % TARGET_BLOCK_INTERVAL !== 0
+  ) {
     let lastBlock = await getBlockFromLevelDB(blockHeight - 1);
     return lastBlock.blockHeader.difficulty;
   }
 
-  let oldBlock = await getBlockFromLevelDB(blockHeight - 100);
+  let oldBlock = await getBlockFromLevelDB(blockHeight - TARGET_BLOCK_INTERVAL);
 
   let lastBlock = await getBlockFromLevelDB(blockHeight - 1);
 
   let timeDifference = lastBlock.blockHeader.time - oldBlock.blockHeader.time;
 
   let newDifficulty = lastBlock.blockHeader.difficulty;
-  if (timeDifference < targetBlockTime * 100) {
+  if (timeDifference < targetBlockTime * TARGET_BLOCK_INTERVAL) {
     newDifficulty += adjustmentFactor;
-  } else if (timeDifference > targetBlockTime * 100) {
+  } else if (timeDifference > targetBlockTime * TARGET_BLOCK_INTERVAL) {
     newDifficulty -= adjustmentFactor;
   }
 
   console.log(`newDifficulty`, newDifficulty);
-
-  return newDifficulty;
-}
-
-async function updateDifficultyX() {
-  const targetBlockTime = 10000;
-  const adjustmentFactor = 0.05;
-
-  // Add a default difficulty value for the first block.
-  let defaultDifficulty = 1;
-
-  let blockHeight = await getBlockHeight();
-
-  let block = await getBlockFromLevelDB(blockNumber);
-
-  // If there are no blocks in the blockchain, return the default difficulty.
-  if (blockHeight === 0) {
-    return defaultDifficulty;
-  }
-
-  if (blockchain.length < 100 || blockchain.length % 100 !== 0) {
-    return blockchain[blockchain.length - 1].blockHeader.difficulty;
-  }
-
-  let oldBlock = blockchain[blockchain.length - 100];
-
-  let timeDifference =
-    blockchain[blockchain.length - 1].blockHeader.time -
-    oldBlock.blockHeader.time;
-
-  let newDifficulty = blockchain[blockchain.length - 1].blockHeader.difficulty;
-  if (timeDifference < targetBlockTime * 100) {
-    newDifficulty += adjustmentFactor;
-  } else if (timeDifference > targetBlockTime * 100) {
-    newDifficulty -= adjustmentFactor;
-  }
 
   return newDifficulty;
 }
@@ -355,12 +319,9 @@ async function addBlockToChain(newBlock) {
   if (totalBlocks > 0) {
     // if blocks exist, get the last block
     previousBlock = await getBlockFromLevelDB(totalBlocks);
-    console.log(`Called Block exist Function`);
   } else if (totalBlocks === 0) {
     // if no blocks exist yet (other than genesis), get the genesis block
     previousBlock = await getBlockFromLevelDB(0);
-    console.log(`previousBlock`, previousBlock);
-    console.log(`Called Block Doesn't exist Function`);
   } else {
     // handle error case if totalBlocks is less than 0
     throw new Error("Invalid block count");
@@ -416,10 +377,6 @@ async function addBlockToChain(newBlock) {
   } else {
     console.log("Error: Invalid block");
   }
-}
-
-function addBlockToChain2(newBlock) {
-  storeBlock(newBlock);
 }
 
 async function validateTransaction(transactions) {
@@ -504,7 +461,6 @@ async function validateTransfer(transaction) {
     calculateHashForTransaction(transaction),
     transaction.signature
   );
-  console.log(` transaction.signature::`, transaction.signature);
   if (!validSignature) {
     console.log(
       `Invalid transaction from ${transaction.sender} due to invalid signature`
@@ -597,7 +553,7 @@ async function createAndAddTransaction(block, transactions, minerAddress) {
         minerRewardTransaction.id = minerRewardTransaction.calculateHash();
 
         // Add the miner reward transaction to the block
-        block.transactions.push(minerRewardTransaction);
+        block.transactions.unshift(minerRewardTransaction);
 
         // Recalculate the Merkle root and mine the block
         block.blockHeader.merkleRoot = new MerkleTree(
@@ -702,8 +658,6 @@ async function getBlockFromLevelDB(index) {
 }
 
 async function storeTransaction(transaction) {
-  console.log(`storeTransaction`, transaction);
-
   // Create a new Transaction instance from the received data
   const transactionInstance = new Transaction(
     transaction.sender,
@@ -805,5 +759,4 @@ module.exports = {
   getTotalSupply: getTotalSupply,
   getTransaction: getTransaction,
   getBlockFromLevelDB: getBlockFromLevelDB,
-  addBlockToChain2: addBlockToChain2,
 };

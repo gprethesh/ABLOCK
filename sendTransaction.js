@@ -27,7 +27,7 @@ async function sendTransaction(sender, receiver, amount, fee, signature, time) {
 
   try {
     const response = await axios.post(
-      "http://localhost:8032/transactions",
+      "http://localhost:8018/transactions",
       transaction
     );
     console.log(response.data);

@@ -19,7 +19,6 @@ const {
   getDbBlock,
   getTotalSupply,
   blockchain,
-  addBlockToChain2,
   getBlockHeight,
   validateTransfer,
   getBlockFromLevelDB,
@@ -51,7 +50,6 @@ let initHttpServer = (port) => {
   app.use(bodyParser.json());
 
   app.post("/transactions", async (req, res) => {
-    console.log(`PINNED ME`);
     try {
       const { sender, receiver, amount, signature, fee, time } = req.body;
 
@@ -71,8 +69,6 @@ let initHttpServer = (port) => {
       // Calculate the hash and assign it directly to the object
       transaction.id = transaction.calculateHash();
 
-      console.log(transaction);
-
       const isValidTransaction = await validateTransfer(transaction);
 
       if (!isValidTransaction) {
@@ -90,8 +86,7 @@ let initHttpServer = (port) => {
     }
   });
 
-  app.get("/mempool", async (req, res) => {
-    console.log(`Called me`);
+  app.get("/memPool", async (req, res) => {
     res.send(tp.getTransactionPool());
   });
 
@@ -118,9 +113,7 @@ let initHttpServer = (port) => {
 
   // getBlock service will be retrieving one block based on an index
   app.get("/getBlock", async (req, res) => {
-    console.log(`called`);
     let blockIndex = req.query.index;
-    console.log(`blockIndex`, blockIndex);
     try {
       let block = await getBlockFromLevelDB(blockIndex);
       res.send(block);
@@ -131,7 +124,6 @@ let initHttpServer = (port) => {
 
   app.get("/getTransaction", async (req, res) => {
     let tnx = req.query.transaction;
-    console.log(`getTransaction`, tnx);
     try {
       let transaction = await getTransaction(tnx);
       res.send(transaction);
@@ -153,6 +145,16 @@ let initHttpServer = (port) => {
   app.get("/getDBBlock", (req, res) => {
     let blockIndex = req.query.index;
     getDbBlock(blockIndex, res);
+  });
+
+  app.get("/mode", async (req, res) => {
+    let mod = req.query.mod;
+    try {
+      isMining = mod;
+      res.send(isMining);
+    } catch (error) {
+      res.status(500).send("Error: " + error.message);
+    }
   });
 
   app.listen(http_port, () => console.log("Listening on port: " + http_port));
@@ -206,7 +208,7 @@ const run = async () => {
     setTimeout(() => {
       if (ENABLE_CHAIN_REQUEST == false) {
         writeMessageToPeers(MessageType.REQUEST_BLOCKCHAIN_HEIGHT);
-        console.log(`No blocks found so calling this method.`);
+        console.log(`START PROCESS - REQUEST_BLOCKCHAIN_HEIGHT`);
       }
     }, 10000);
 
@@ -278,7 +280,7 @@ const run = async () => {
             if (localBlockchainHeight < peerBlockchainHeight) {
               const nextBlockIndex = localBlockchainHeight + 1;
               writeMessageToPeers(MessageType.REQUEST_BLOCK, nextBlockIndex);
-              console.log(`Sending Blockchain Hegiht`);
+              console.log(`Sending Blockchain Hegiht Requested`);
             } else {
               console.log(
                 chalk.green.bold("-----------BLOCK_SYNCED-------------")
@@ -307,7 +309,9 @@ const run = async () => {
 
             const block = await getBlockFromLevelDB(blockNumber); // Get block
 
-            console.log(`block that sent`, block);
+            if (block) {
+              console.log(`Block Fetched from leveldb and sent`, blockNumber);
+            }
 
             writeMessageToPeerToId(
               peerId.toString("hex"),
@@ -329,16 +333,13 @@ const run = async () => {
 
           case MessageType.RECEIVE_NEXT_BLOCK:
             console.log("-----------RECEIVE_NEXT_BLOCK-------------");
-            // add to blockchain
-            // if (message.data.index === 0) {
-            //   addBlockToChain2(message.data);
-            // } else {
-            //   await addBlockToChain(message.data);
-            // }
-            await addBlockToChain(message.data);
+            const info = await addBlockToChain(message.data);
 
-            await delay(3000);
-            writeMessageToPeers(MessageType.REQUEST_BLOCKCHAIN_HEIGHT);
+            if (info) {
+              await delay(3000);
+              writeMessageToPeers(MessageType.REQUEST_BLOCKCHAIN_HEIGHT);
+            }
+
             console.log("-----------RECEIVE_NEXT_BLOCK-------------");
             break;
 
@@ -471,10 +472,12 @@ const job = new CronJob("*/60 * * * * *", async function () {
   if (isMining) {
     console.log(chalk.green.bold("-----------MINE_BLOCK-------------"));
     const transaction1 = tp.getTransactionPool();
+
+    console.log(`transaction1`, transaction1);
     let block1 = await createNewBlock([], minerAddress);
 
     console.log(`blockXXX`, block1);
-    await createAndAddTransaction(block1, [], minerAddress);
+    await createAndAddTransaction(block1, transaction1, minerAddress);
     try {
       const info = await addBlockToChain(block1);
       console.log(`info`, info);
@@ -497,6 +500,6 @@ const job = new CronJob("*/60 * * * * *", async function () {
   }
 });
 
-// job.start();
+job.start();
 
 run();
