@@ -500,6 +500,6 @@ const job = new CronJob("*/60 * * * * *", async function () {
   }
 });
 
-job.start();
+// job.start();
 
 run();
