@@ -90,37 +90,6 @@ async function createGenesisBlock() {
   return block;
 }
 
-async function createGenesisBlockX() {
-  let timestamp = new Date().getTime();
-  let previousBlockHeader = "0";
-  let version = "1.0.0";
-  let merkleRoot = "0";
-  let blockHeader = new BlockHeader(
-    version,
-    previousBlockHeader,
-    merkleRoot,
-    timestamp
-  );
-
-  // Create a transaction
-  let sender = "genesis";
-  let receiver =
-    "04227ea4320cfd7d50fd821b3cc66d7bcbd80a8806dc3e5ce90fba3c6594920c482d6360933fd149363d5d1177320e108d836165ae48ece6d9c54919565c2f0562";
-  let amount = 100000; // or whatever amount you want to initialize with
-  let transaction = new Transaction(sender, receiver, amount);
-
-  // Add the transaction to the block
-  let transactions = [transaction];
-
-  let index = 0;
-  let block = new Block(blockHeader, index, transactions);
-  block.blockHeader.hash = calculateHashForBlock(block);
-
-  await updateBalance(receiver, amount);
-
-  return block;
-}
-
 async function mineBlock(block) {
   let hash = calculateHashForBlock(block);
   console.log(`Mining for hash`, hash);
