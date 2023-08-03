@@ -360,7 +360,7 @@ const run = async () => {
                   // Start mining a new block
                   job.start();
                   console.log(
-                    chalk.red.bold(`RESTARTING THE MINING ON THIS NODE`)
+                    chalk.yellow.bold(`RESTARTING THE MINING ON THIS NODE`)
                   );
                 } else {
                   console.log(
@@ -469,7 +469,7 @@ writeMessageToPeerToId = (toId, type, data) => {
 const job = new CronJob("*/60 * * * * *", async function () {
   console.log(`CORN JOB CALLED`);
   isMining = true;
-  if (isMining) {
+  while (isMining) {
     console.log(chalk.green.bold("-----------MINE_BLOCK-------------"));
     const transaction1 = tp.getTransactionPool();
 
@@ -489,6 +489,7 @@ const job = new CronJob("*/60 * * * * *", async function () {
           sender: keyPair.publicKey.toString("hex"),
         });
         console.log(chalk.blue.bold("-----------BROADCAST_BLOCK-------------"));
+        break;
       }
     } catch (error) {
       console.log("An error occurred while adding the block:", error);

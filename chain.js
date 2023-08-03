@@ -11,6 +11,7 @@ const fs = require("fs");
 const path = require("path");
 const levelup = require("levelup");
 const leveldown = require("leveldown");
+const chalk = require("chalk");
 
 const { TRANSACTION_FEE, MINING_REWARD, MAX_SUPPLY } = require("./config.json");
 const tp = require("./transactionPool");
@@ -91,6 +92,16 @@ async function createGenesisBlock() {
 }
 
 async function mineBlock(block) {
+  const existingBlock = await getBlockFromLevelDB(block.index);
+  if (existingBlock) {
+    console.log(
+      chalk.yellow.bold(
+        `Block with index ${block.index} already exists, skipping`
+      )
+    );
+    return;
+  }
+
   let hash = calculateHashForBlock(block);
   console.log(`Mining for hash`, hash);
   while (hash.substring(0, difficulty) !== Array(difficulty + 1).join("0")) {
@@ -107,27 +118,33 @@ async function mineBlock(block) {
 }
 
 async function rewardMiner(block) {
-  // Check that the first transaction is from 'coinbase'
-  if (block.transactions[0].sender !== "coinbase") {
-    throw new Error("First transaction is not from 'coinbase'");
+  try {
+    // Check that the first transaction is from 'coinbase'
+    if (block.transactions[0].sender !== "coinbase") {
+      throw new Error("First transaction is not from 'coinbase'");
+    }
+
+    let minerAddress = block.transactions[0].receiver;
+
+    // Fetch and wait for the miner's balance
+    let minerBalance = await getBalance(minerAddress);
+    minerBalance = minerBalance || 0;
+
+    let totalTransactionFees = 0;
+
+    // Start i at 1 to skip the coinbase transaction
+    for (let i = 1; i < block.transactions.length; i++) {
+      totalTransactionFees += block.transactions[i].fee;
+    }
+
+    // Update and wait for the miner's balance to be updated
+    await updateBalance(
+      minerAddress,
+      minerBalance + totalTransactionFees + MINING_REWARD
+    );
+  } catch (error) {
+    console.error(`Failed to reward miner: ${error.message}`);
   }
-
-  let minerAddress = block.transactions[0].receiver;
-
-  let minerBalance = await getBalance(minerAddress);
-  minerBalance = minerBalance || 0;
-
-  let totalTransactionFees = 0;
-
-  // Start i at 1 to skip the coinbase transaction
-  for (let i = 1; i < block.transactions.length; i++) {
-    totalTransactionFees += block.transactions[i].fee;
-  }
-
-  await updateBalance(
-    minerAddress,
-    minerBalance + totalTransactionFees + MINING_REWARD
-  );
 }
 
 async function createNewBlock(transactions, minerAddress) {
@@ -278,6 +295,15 @@ let storeBlock = async (newBlock) => {
 };
 
 async function addBlockToChain(newBlock) {
+  const existingBlock = await getBlockFromLevelDB(newBlock.index);
+  if (existingBlock) {
+    console.log(
+      chalk.blue.bold(
+        `Block with index ${newBlock.index} already exists, skipping`
+      )
+    );
+    return;
+  }
   // Get the total count of blocks in your blockchain
   let totalBlocks = await getBlockHeight();
 
