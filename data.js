@@ -9,6 +9,16 @@ const bodyParser = require("body-parser");
 const tp = require("./transactionPool");
 const { minerAddress, TRANSACTION_FEE } = require("./config.json");
 const CronJob = require("cron").CronJob;
+const miningState = require("./miningState");
+
+miningState.on("change", (isMining) => {
+  console.log(chalk.yellow.bold(`INSIDE STATE`));
+  if (!isMining) {
+    // Restart the mining process here
+    job.start();
+    console.log(chalk.yellow.bold(`RESTARTING THE MINING ON THIS NODE`));
+  }
+});
 
 const {
   createDb,
@@ -364,12 +374,7 @@ const run = async () => {
                       )
                     );
                     // Stop any ongoing mining process
-                    isMining = false;
-                    // Start mining a new block
-                    job.start();
-                    console.log(
-                      chalk.yellow.bold(`RESTARTING THE MINING ON THIS NODE`)
-                    );
+                    miningState.isMining = false;
 
                     // Add the block's hash to chainInfo.checkedBlock
                     chainInfo.checkedBlock[blockHash] = true;
@@ -487,20 +492,31 @@ writeMessageToPeerToId = (toId, type, data) => {
 
 const job = new CronJob("*/60 * * * * *", async function () {
   console.log(`CORN JOB CALLED`);
-  isMining = true;
-  if (isMining) {
-    console.log(chalk.green.bold("-----------MINE_BLOCK-------------"));
-    const transaction1 = tp.getTransactionPool();
 
-    console.log(`transaction1`, transaction1);
-    let block1 = await createNewBlock([], minerAddress);
+  console.log(
+    `miningState.isMining at start of cron job: ${miningState.isMining}`
+  );
 
-    console.log(`blockXXX`, block1);
-    const blockx = await createAndAddTransaction(
-      block1,
-      transaction1,
-      minerAddress
-    );
+  console.log(chalk.green.bold("-----------MINE_BLOCK-------------"));
+  const transaction1 = tp.getTransactionPool();
+
+  console.log(`transaction1`, transaction1);
+  let block1 = await createNewBlock([], minerAddress);
+
+  console.log(`blockXXX`, block1);
+
+  miningState.isMining = true;
+  console.log(
+    `miningState.isMining before calling mineBlock: ${miningState.isMining}`
+  );
+  const blockx = await createAndAddTransaction(
+    block1,
+    transaction1,
+    minerAddress
+  );
+
+  // Check if blockx is not null
+  if (blockx) {
     try {
       const info = await addBlockToChain(blockx);
       console.log(`info`, info);
@@ -516,11 +532,13 @@ const job = new CronJob("*/60 * * * * *", async function () {
     } catch (error) {
       console.log("An error occurred while adding the block:", error);
     }
-
-    console.log(chalk.green.bold("-----------MINE_BLOCK-------------"));
-
-    console.log(`CORN JOB OFF`);
+  } else {
+    console.log("Mining process was stopped, skipping this round");
   }
+
+  console.log(chalk.green.bold("-----------MINE_BLOCK-------------"));
+
+  console.log(`CORN JOB OFF`);
 });
 
 // job.start();

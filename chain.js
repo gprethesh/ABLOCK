@@ -12,11 +12,12 @@ const path = require("path");
 const levelup = require("levelup");
 const leveldown = require("leveldown");
 const chalk = require("chalk");
+const miningState = require("./miningState");
 
 const { TRANSACTION_FEE, MINING_REWARD, MAX_SUPPLY } = require("./config.json");
 const tp = require("./transactionPool");
 
-const difficulty = 6;
+const difficulty = 5;
 const blockchain = [];
 const lock = new AsyncLock();
 
@@ -92,6 +93,10 @@ async function createGenesisBlock() {
 }
 
 async function mineBlock(block) {
+  console.log(
+    "miningState when mineBlock is called First time",
+    miningState.isMining
+  );
   const existingBlock = await getBlockFromLevelDB(block.index);
   if (existingBlock) {
     console.log(
@@ -105,6 +110,16 @@ async function mineBlock(block) {
   let hash = calculateHashForBlock(block);
   console.log(`Mining for hash`, hash);
   while (hash.substring(0, difficulty) !== Array(difficulty + 1).join("0")) {
+    // Check if miningState.isMining is false
+    if (!miningState.isMining) {
+      console.log(
+        "miningState.isMining inside while loop:",
+        miningState.isMining
+      );
+      console.log("Mining process stopped");
+      return null; // Or some other value to indicate that the mining process was stopped
+    }
+
     block.nonce++;
     hash = calculateHashForBlock(block);
     // if (block.nonce % 10000 === 0) {
