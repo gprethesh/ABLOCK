@@ -39,6 +39,10 @@ let MessageType = {
   REGISTER_TRANSACTION: "transaction",
 };
 
+const chainInfo = {
+  checkedBlock: {},
+};
+
 let writeMessageToPeers, writeMessageToPeerToId;
 
 let ENABLE_CHAIN_REQUEST = false;
@@ -347,28 +351,43 @@ const run = async () => {
             if (ENABLE_CHAIN_REQUEST == true) {
               if (message.data.sender !== keyPair.publicKey.toString("hex")) {
                 console.log("-----------RECEIVED_NEW_BLOCK-------------");
-                // add to blockchain
-                const newBlock = await addBlockToChain(message.data.block);
-                if (newBlock) {
-                  console.log(
-                    chalk.red.bold(
-                      `OPPONENT GOT REWARD - ADDING THIER BLOCK TO CHAIN`
-                    )
-                  );
-                  // Stop any ongoing mining process
-                  isMining = false;
-                  // Start mining a new block
-                  job.start();
-                  console.log(
-                    chalk.yellow.bold(`RESTARTING THE MINING ON THIS NODE`)
-                  );
+
+                // Check if the block is new
+                const blockHash = message.data.block.blockHeader.hash; // Replace with your function to get the block's hash
+                if (!chainInfo.checkedBlock[blockHash]) {
+                  // Add to blockchain
+                  const newBlock = await addBlockToChain(message.data.block);
+                  if (newBlock) {
+                    console.log(
+                      chalk.red.bold(
+                        `OPPONENT GOT REWARD - ADDING THEIR BLOCK TO CHAIN`
+                      )
+                    );
+                    // Stop any ongoing mining process
+                    isMining = false;
+                    // Start mining a new block
+                    job.start();
+                    console.log(
+                      chalk.yellow.bold(`RESTARTING THE MINING ON THIS NODE`)
+                    );
+
+                    // Add the block's hash to chainInfo.checkedBlock
+                    chainInfo.checkedBlock[blockHash] = true;
+                    console.log("CHAIN-INFO::", chainInfo.checkedBlock);
+                  } else {
+                    console.log(
+                      chalk.green.bold(
+                        `BLOCK SENT BY OPPONENT WAS INVALID - SO I WON`
+                      )
+                    );
+                  }
                 } else {
                   console.log(
-                    chalk.green.bold(
-                      `BLOCK SENT BY OPPONENT WAS INAVLID - SO I WON`
-                    )
+                    `chainInfo.checkedBlock[blockHash]`,
+                    chainInfo.checkedBlock[blockHash]
                   );
                 }
+
                 console.log("-----------RECEIVED_NEW_BLOCK-------------");
               }
             }
@@ -469,7 +488,7 @@ writeMessageToPeerToId = (toId, type, data) => {
 const job = new CronJob("*/60 * * * * *", async function () {
   console.log(`CORN JOB CALLED`);
   isMining = true;
-  while (isMining) {
+  if (isMining) {
     console.log(chalk.green.bold("-----------MINE_BLOCK-------------"));
     const transaction1 = tp.getTransactionPool();
 
@@ -477,9 +496,13 @@ const job = new CronJob("*/60 * * * * *", async function () {
     let block1 = await createNewBlock([], minerAddress);
 
     console.log(`blockXXX`, block1);
-    await createAndAddTransaction(block1, transaction1, minerAddress);
+    const blockx = await createAndAddTransaction(
+      block1,
+      transaction1,
+      minerAddress
+    );
     try {
-      const info = await addBlockToChain(block1);
+      const info = await addBlockToChain(blockx);
       console.log(`info`, info);
 
       if (info) {
@@ -489,7 +512,6 @@ const job = new CronJob("*/60 * * * * *", async function () {
           sender: keyPair.publicKey.toString("hex"),
         });
         console.log(chalk.blue.bold("-----------BROADCAST_BLOCK-------------"));
-        break;
       }
     } catch (error) {
       console.log("An error occurred while adding the block:", error);

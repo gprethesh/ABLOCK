@@ -16,7 +16,7 @@ const chalk = require("chalk");
 const { TRANSACTION_FEE, MINING_REWARD, MAX_SUPPLY } = require("./config.json");
 const tp = require("./transactionPool");
 
-const difficulty = 5;
+const difficulty = 6;
 const blockchain = [];
 const lock = new AsyncLock();
 
@@ -114,7 +114,7 @@ async function mineBlock(block) {
 
   block.blockHeader.hash = hash;
 
-  return true;
+  return block;
 }
 
 async function rewardMiner(block) {
@@ -212,7 +212,7 @@ async function updateDifficulty() {
   const TARGET_BLOCK_INTERVAL = 100;
 
   // Add a default difficulty value for the first block.
-  let defaultDifficulty = 5;
+  let defaultDifficulty = difficulty;
 
   let blockHeight = await getBlockHeight();
 
@@ -482,7 +482,7 @@ async function validateTransfer(transaction) {
 
 async function createAndAddTransaction(block, transactions, minerAddress) {
   try {
-    await lock.acquire("transaction", async () => {
+    return await lock.acquire("transaction", async () => {
       try {
         // Create a helper function to handle single transaction
         const handleSingleTransaction = async (transaction) => {
@@ -556,7 +556,7 @@ async function createAndAddTransaction(block, transactions, minerAddress) {
         ).getMerkleRoot();
         // console.log(`transactions inside block`, transactions);
 
-        await mineBlock(block);
+        return await mineBlock(block);
       } catch (error) {
         console.error("Error processing transaction:", error);
       }
