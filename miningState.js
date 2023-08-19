@@ -24,6 +24,5 @@ class MiningState extends EventEmitter {
 }
 
 const instance = new MiningState();
-// Object.freeze(instance);
 
 module.exports = instance;
