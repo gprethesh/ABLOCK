@@ -5,7 +5,11 @@ const crypto = require("crypto");
 
 const swarm2 = new Hyperswarm();
 
-const difficulty = 5;
+const difficulty = 25;
+
+const maximumTarget =
+  "0x00000FFFFFFF0000000000000000000000000000000000000000000000000000";
+const target = maximumTarget / difficulty;
 
 function calculateHashForBlock(block) {
   return crypto
@@ -21,16 +25,19 @@ function calculateHashForBlock(block) {
 }
 
 async function mineBlock(block) {
+  console.log(`target`, target);
   let hash = calculateHashForBlock(block);
   console.log(`Mining for hash`, hash);
-  while (hash.substring(0, difficulty) !== Array(difficulty + 1).join("0")) {
+  while (parseInt(hash, 16) > target) {
     block.nonce++;
     hash = calculateHashForBlock(block);
   }
 
+  block.blockHeader.difficulty = target;
+
   block.blockHeader.hash = hash;
 
-  return true;
+  return block;
 }
 
 async function createNewBlock(transactions, minerAddress) {
@@ -61,7 +68,7 @@ async function createNewBlockHeader(transactions) {
 
   let merkleTree = "1578676876678";
   let merkleRoot = "67868769868";
-  let difficulty = 3;
+  let difficulty = null;
   return new BlockHeader(
     version,
     previousBlockHeader,
@@ -76,13 +83,16 @@ const run = async () => {
 
   console.log(`block Created`);
 
+  const data = mineBlock(block1);
+  console.log(data);
+
   swarm2.on("connection", (conn, info) => {
     console.log(`inside`);
 
-    setInterval(() => {
-      const data = mineBlock(block1);
-      console.log(data);
-    }, 10000);
+    // setInterval(() => {
+    //   const data = mineBlock(block1);
+    //   console.log(data);
+    // }, 10000);
     conn.on("data", (data) =>
       console.log("client got message:", data.toString())
     );
