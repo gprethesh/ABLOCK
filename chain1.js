@@ -13,18 +13,11 @@ const levelup = require("levelup");
 const leveldown = require("leveldown");
 const chalk = require("chalk");
 const miningState = require("./miningState");
-const util = require("util");
-const scryptAsync = util.promisify(crypto.scrypt);
 
 const { TRANSACTION_FEE, MINING_REWARD, MAX_SUPPLY } = require("./config.json");
 const tp = require("./transactionPool");
 
-const difficulty = 0x10;
-const maximumTarget = BigInt(
-  "0x000FFFFFFFFF0000000000000000000000000000000000000000000000000000"
-);
-const target = maximumTarget / BigInt(difficulty);
-
+const difficulty = 5;
 const blockchain = [];
 const lock = new AsyncLock();
 
@@ -46,7 +39,7 @@ let createDb = async (peerId) => {
       let genesisBlock = await createGenesisBlock();
       blockchain.push(genesisBlock);
       storeBlock(genesisBlock);
-      console.log(`Genesis Block Created.`, genesisBlock);
+      console.log(`Genesis Block Created.`);
     } else {
       // Some other error occurred.
       console.error("Error creating or opening database:", err);
@@ -54,35 +47,22 @@ let createDb = async (peerId) => {
   }
 };
 
-async function calculateHashForBlock(block) {
-  const data = [
-    block.blockHeader.version,
-    block.blockHeader.previousBlockHeader,
-    block.blockHeader.merkleRoot,
-    block.blockHeader.time,
-    block.nonce,
-  ].join("");
-
-  const salt = "someConstantSalt"; // Generate a random salt
-  const keylen = 32; // Length of the output key
-
-  // Adjust these for CPU-friendly mining
-  const N = 1024; // Lower CPU/memory cost factor
-  const r = 4; // Lower block size
-  const p = 1; // Lower parallelization factor
-
-  try {
-    const derivedKey = await scryptAsync(data, salt, keylen, { N, r, p });
-    return derivedKey.toString("hex");
-  } catch (err) {
-    throw err; // Handle the error as you see fit
-  }
+function calculateHashForBlock(block) {
+  return crypto
+    .createHash("sha256")
+    .update(
+      block.blockHeader.version +
+        block.blockHeader.previousBlockHeader +
+        block.blockHeader.merkleRoot +
+        block.blockHeader.time +
+        block.nonce
+    )
+    .digest("hex");
 }
 
 async function createGenesisBlock() {
   let timestamp = 1690365924213;
-  let previousBlockHeader =
-    "0000000000000000000000000000000000000000000000000000000000000000";
+  let previousBlockHeader = "0";
   let version = "1.0.0";
   let merkleRoot =
     "bb77e380f6d0ae7a842dc47a11b4d6a46523b05295eb86d4a583e59b90c1cbb5";
@@ -105,7 +85,7 @@ async function createGenesisBlock() {
 
   let index = 0;
   let block = new Block(blockHeader, index, transactions);
-  block.blockHeader.hash = await calculateHashForBlock(block);
+  block.blockHeader.hash = calculateHashForBlock(block);
 
   await updateBalance(receiver, amount);
 
@@ -113,17 +93,42 @@ async function createGenesisBlock() {
 }
 
 async function mineBlock(block) {
-  console.log("target", target.toString());
-  let hash = await calculateHashForBlock(block);
-  console.log("Mining for hash", hash);
-  while (BigInt("0x" + hash) > target) {
-    block.nonce++;
-    hash = await calculateHashForBlock(block);
+  console.log(
+    "miningState when mineBlock is called First time",
+    miningState.isMining
+  );
+  const existingBlock = await getBlockFromLevelDB(block.index);
+  if (existingBlock) {
+    console.log(
+      chalk.yellow.bold(
+        `Block with index ${block.index} already exists, skipping`
+      )
+    );
+    return;
   }
 
-  block.blockHeader.difficulty = "0x" + difficulty.toString(16); // Difficulty as hexadecimal
-  block.target = target.toString();
+  let hash = calculateHashForBlock(block);
+  console.log(`Mining for hash`, hash);
+  while (hash.substring(0, difficulty) !== Array(difficulty + 1).join("0")) {
+    // Check if miningState.isMining is false
+    if (!miningState.isMining) {
+      console.log(
+        "miningState.isMining inside while loop:",
+        miningState.isMining
+      );
+      console.log("Mining process stopped");
+      return null; // Or some other value to indicate that the mining process was stopped
+    }
+
+    block.nonce++;
+    hash = calculateHashForBlock(block);
+    // if (block.nonce % 10000 === 0) {
+    //   console.log(`Checking hash: ${hash}`); // This line logs each 10,000th hash that is checked
+    // }
+  }
+
   block.blockHeader.hash = hash;
+
   return block;
 }
 
@@ -186,7 +191,6 @@ async function createNewBlockHeader(transactions) {
   let merkleTree = new MerkleTree(transactions);
   let merkleRoot = merkleTree.getMerkleRoot();
   let difficulty = await updateDifficulty();
-  console.log(`difficulty`, difficulty);
   return new BlockHeader(
     version,
     previousBlockHeader,
@@ -197,7 +201,6 @@ async function createNewBlockHeader(transactions) {
 }
 
 async function getPreviousBlockHeader() {
-  console.log(`i'm called getPreviousBlockHeader`);
   // Get the total count of blocks in your blockchain
   let totalBlocks = await getBlockHeight();
 
@@ -207,11 +210,9 @@ async function getPreviousBlockHeader() {
     // if blocks exist, get the last block's hash
     previousBlockHeader = (await getBlockFromLevelDB(totalBlocks)).blockHeader
       .hash;
-    console.log(`totalblocks greater so this was called`);
   } else if (totalBlocks === 0) {
     // if no blocks exist yet (other than genesis), get the genesis block's hash
     previousBlockHeader = (await getBlockFromLevelDB(0)).blockHeader.hash;
-    console.log(`no blocks so this was called`);
   } else {
     // handle error case if totalBlocks is less than 0
     throw new Error("Invalid block count");
@@ -221,20 +222,17 @@ async function getPreviousBlockHeader() {
 }
 
 async function updateDifficulty() {
-  console.log(`called function`);
-  const targetBlockTime = 20000; // Target time per block in milliseconds
-  const TARGET_BLOCK_INTERVAL = 2; // Number of blocks for difficulty adjustment
+  const targetBlockTime = 20000;
+  const adjustmentFactor = 1;
+  const TARGET_BLOCK_INTERVAL = 100;
 
   // Add a default difficulty value for the first block.
   let defaultDifficulty = difficulty;
 
   let blockHeight = await getBlockHeight();
 
-  console.log(`blockHeight`, blockHeight);
-
   // If there are no blocks in the blockchain, return the default difficulty.
   if (blockHeight === 0) {
-    console.log(`return because no block ?`);
     return defaultDifficulty;
   }
 
@@ -242,36 +240,29 @@ async function updateDifficulty() {
     blockHeight < TARGET_BLOCK_INTERVAL ||
     blockHeight % TARGET_BLOCK_INTERVAL !== 0
   ) {
-    console.log(`inside the block`);
     let lastBlock = await getBlockFromLevelDB(blockHeight - 1);
-
     return lastBlock.blockHeader.difficulty;
   }
 
   let oldBlock = await getBlockFromLevelDB(blockHeight - TARGET_BLOCK_INTERVAL);
+
   let lastBlock = await getBlockFromLevelDB(blockHeight - 1);
 
   let timeDifference = lastBlock.blockHeader.time - oldBlock.blockHeader.time;
-  console.log(`timeDifference`, timeDifference);
 
-  // Calculate the new difficulty
   let newDifficulty = lastBlock.blockHeader.difficulty;
-  let idealTime = targetBlockTime * TARGET_BLOCK_INTERVAL;
-  let ratio = idealTime / timeDifference;
-
-  newDifficulty = Math.round(newDifficulty * ratio);
+  if (timeDifference < targetBlockTime * TARGET_BLOCK_INTERVAL) {
+    newDifficulty += adjustmentFactor;
+  } else if (timeDifference > targetBlockTime * TARGET_BLOCK_INTERVAL) {
+    newDifficulty -= adjustmentFactor;
+  }
 
   console.log(`newDifficulty`, newDifficulty);
 
-  // Convert newDifficulty to hexadecimal
-  let newDifficultyHex = "0x" + newDifficulty.toString(16);
-
-  console.log(`newDifficulty in hexadecimal`, newDifficultyHex);
-
-  return newDifficultyHex;
+  return newDifficulty;
 }
 
-async function isValidNewBlock(newBlock, previousBlock) {
+function isValidNewBlock(newBlock, previousBlock) {
   if (!previousBlock) {
     // This is the first block. Perform specific genesis block checks.
     // For simplicity, we'll only check the index here.
@@ -291,7 +282,7 @@ async function isValidNewBlock(newBlock, previousBlock) {
       console.log("Error: Invalid previous block header");
       return false;
     } else {
-      let hash = await calculateHashForBlock(newBlock);
+      let hash = calculateHashForBlock(newBlock);
       if (hash !== newBlock.blockHeader.hash) {
         console.log(
           `Error: Invalid hash: ${hash} ${newBlock.blockHeader.hash}`

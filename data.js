@@ -541,6 +541,6 @@ const job = new CronJob("*/60 * * * * *", async function () {
   console.log(`CORN JOB OFF`);
 });
 
-// job.start();
+job.start();
 
 run();
