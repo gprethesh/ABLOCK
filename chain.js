@@ -15,6 +15,7 @@ const chalk = require("chalk");
 const miningState = require("./miningState");
 const util = require("util");
 const scryptAsync = util.promisify(crypto.scrypt);
+const { Worker } = require('worker_threads');
 
 const { TRANSACTION_FEE, MINING_REWARD, MAX_SUPPLY } = require("./config.json");
 const tp = require("./transactionPool");
@@ -113,18 +114,18 @@ async function createGenesisBlock() {
 }
 
 async function mineBlock(block) {
-  console.log("target", target.toString());
-  let hash = await calculateHashForBlock(block);
-  console.log("Mining for hash", hash);
-  while (BigInt("0x" + hash) > target) {
-    block.nonce++;
-    hash = await calculateHashForBlock(block);
-  }
-
-  block.blockHeader.difficulty = "0x" + difficulty.toString(16); // Difficulty as hexadecimal
-  block.target = target.toString();
-  block.blockHeader.hash = hash;
-  return block;
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(path.join(__dirname, 'minerWorker.js'));
+    worker.postMessage(block);
+    worker.on('message', (minedBlock) => {
+      resolve(minedBlock);
+    });
+    worker.on('error', reject);
+    worker.on('exit', (code) => {
+      if (code !== 0)
+        reject(new Error(`Worker stopped with exit code ${code}`));
+    });
+  });
 }
 
 async function rewardMiner(block) {
